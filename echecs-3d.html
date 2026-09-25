@@ -3009,6 +3009,7 @@ const BabylonRenderer = {
         this.fallbackReason = String((e && e.message) || e);
         Store.set(KEY_GPU, { failed: BabylonLoader.VERSION, reason: this.fallbackReason });
         this.teardown();
+        this.muteDeadEngine();
         // Repli le plus sûr : rechargement propre (le drapeau enregistré évite WebGPU au prochain démarrage)
         const saved = Store.get(KEY_GPU, null);
         if (saved && saved.failed === BabylonLoader.VERSION && GRAPHICS_CONFIG.backend !== 'webgpu') {
@@ -3056,6 +3057,16 @@ const BabylonRenderer = {
     old.replaceWith(c);
     this.canvas = c;
   },
+  // Le moteur WebGPU abandonné peut encore lever une erreur asynchrone (restauration de contexte en cours) :
+  // elle ne concerne plus la partie, on l'écarte de la console pendant quelques secondes
+  muteDeadEngine() {
+    const dead = /rendering canvas has not been set|WebGPU|GPUDevice/i;
+    const onErr = e => { if (dead.test(String((e.error && e.error.message) || e.message || ''))) e.preventDefault(); };
+    const onRej = e => { if (dead.test(String((e.reason && e.reason.message) || e.reason || ''))) e.preventDefault(); };
+    window.addEventListener('error', onErr);
+    window.addEventListener('unhandledrejection', onRej);
+    setTimeout(() => { window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onRej); }, 20000);
+  },
   teardown() {
     try { if (this.engine) { this.engine.stopRenderLoop(); this.engine.dispose(); } } catch (e) { /* ignore */ }
     this.engine = null; this.scene = null;
@@ -3083,6 +3094,11 @@ const BabylonRenderer = {
     EffectsManager.init(scene);
     this.glow = new BABYLON.GlowLayer('glow', scene, { mainTextureRatio: .4, blurKernelSize: 40 });
     this.glow.intensity = .85;
+    // Liste « inclus seulement » jamais vide : sans elle, dès que le dernier effet se retire, Babylon ferait
+    // briller TOUT maillage émissif (repères de cases, cadre…) pendant les effets suivants
+    const sentinel = new BABYLON.Mesh('glow-sentinel', scene);
+    sentinel.setEnabled(false); sentinel.isPickable = false;
+    this.glow.addIncludedOnlyMesh(sentinel);
     // Sonde de réflexion (rendue une fois, puis à chaque thème) : l'acier de l'épée et le laiton
     // reflètent l'échiquier réel plutôt que le seul studio d'éclairage
     try {
@@ -3721,8 +3737,8 @@ const HighlightManager = {
         add(t.sq, 'brackets', 'cap', { alpha: .95, scale: .96, kind: 'cap', delay, additive: true });
         add(t.sq, 'ring', 'cap', { alpha: .5, scale: .9, kind: 'capRing', delay, additive: true });
       } else {                                                   // pastille lisible sur cases claires comme foncées : ombre douce + point doré
-        add(t.sq, 'dot', 'shade', { alpha: .34, scale: .44, kind: 'dot', delay, y: .003, order: 0 });
-        add(t.sq, 'dot', 'dot', { alpha: this.th ? this.th.hi.dotOp + .32 : .8, scale: .3, kind: 'dot', delay });
+        add(t.sq, 'dot', 'shade', { alpha: .42, scale: .5, kind: 'dot', delay, y: .003, order: 0 });
+        add(t.sq, 'dot', 'dot', { alpha: this.th ? this.th.hi.dotOp + .36 : .85, scale: .34, kind: 'dot', delay });
       }
     }
     if (S.hover >= 0 && S.targets.some(t => t.sq === S.hover)) add(S.hover, 'square', 'sel', { alpha: .45, kind: 'hover' });
@@ -5074,7 +5090,7 @@ const TouchController = {
     canvas.addEventListener('pointermove', e => this.move(e));
     canvas.addEventListener('pointerup', e => this.up(e));
     canvas.addEventListener('pointercancel', e => this.cancel(e));
-    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !Game.drag) View.setHover(-1); });
+    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !Game.drag) Game.clearHover(); });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('wheel', e => { e.preventDefault(); CameraController.userZoom(e.deltaY > 0 ? 1.05 : 1 / 1.05); CameraController.userEnd(); }, { passive: false });
     canvas.addEventListener('dblclick', e => { if (View.pick(e) < 0) CameraController.resetView(); });
@@ -6715,6 +6731,14 @@ const Game = {
     const to = View.squareAtPoint(View.planeHit(e, 0));
     if (to >= 0 && to !== d.sq && this.targets.some(t => t.sq === to)) this.tryMove(d.sq, to, true);
     else { Haptics.error(); this.returnHome(d); }
+  },
+
+  // La souris quitte le plateau (vers l'interface) : plus de case ni de pièce survolée
+  clearHover() {
+    View.setHover(-1);
+    View.canvas.classList.remove('is-grab');
+    const hp = this.hoverPiece; this.hoverPiece = null;
+    if (hp && hp.alive && hp.lift.target === ANIMATION_CONFIG.hover.lift) hp.lift.target = 0;
   },
 
   cancelDrag() {

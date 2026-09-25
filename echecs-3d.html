@@ -2394,16 +2394,29 @@ const MaterialLibrary = {
     blob.disableDepthWrite = true; blob.zOffset = -2; blob.backFaceCulling = true;
   },
   spriteCache: {},
+  // Canevas → texture GPU. WebGL : DynamicTexture (copie directe du canevas).
+  // WebGPU : pixels bruts (RawTexture) — évite copyExternalImageToTexture, fragile sur certains pilotes.
+  fromCanvas(name, canvas, { mips = true, alpha = false } = {}) {
+    const scene = this.scene, TRI = BABYLON.Constants.TEXTURE_TRILINEAR_SAMPLINGMODE;
+    if (scene.getEngine().isWebGPU) {
+      const img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      const t = BABYLON.RawTexture.CreateRGBATexture(new Uint8Array(img.data.buffer), canvas.width, canvas.height, scene, mips, true, TRI);
+      t.name = name;
+      return t;
+    }
+    const t = new BABYLON.DynamicTexture(name, canvas, scene, mips, TRI);
+    t.update(true, alpha);
+    return t;
+  },
   spriteTexture(key, canvas) {
     if (this.spriteCache[key]) return this.spriteCache[key];
-    const t = new BABYLON.DynamicTexture('sprite-' + key, canvas, this.scene, true);
-    t.hasAlpha = true; t.update(true, true);
+    const t = this.fromCanvas('sprite-' + key, canvas, { alpha: true });
+    t.hasAlpha = true;
     t.wrapU = t.wrapV = BABYLON.Constants.TEXTURE_CLAMP_ADDRESSMODE;
     return (this.spriteCache[key] = t);
   },
   canvasTexture(name, canvas, { srgb = true, wrap = false, aniso = 8, mips = true } = {}) {
-    const t = new BABYLON.DynamicTexture(name, canvas, this.scene, mips, BABYLON.Constants.TEXTURE_TRILINEAR_SAMPLINGMODE);
-    t.update(true);
+    const t = this.fromCanvas(name, canvas, { mips });
     t.gammaSpace = srgb;
     t.anisotropicFilteringLevel = aniso;
     t.wrapU = t.wrapV = wrap ? BABYLON.Constants.TEXTURE_WRAP_ADDRESSMODE : BABYLON.Constants.TEXTURE_CLAMP_ADDRESSMODE;
@@ -2981,7 +2994,15 @@ const BabylonRenderer = {
         this.fallbackReason = String((e && e.message) || e);
         Store.set(KEY_GPU, { failed: BabylonLoader.VERSION, reason: this.fallbackReason });
         this.teardown();
+        // Repli le plus sûr : rechargement propre (le drapeau enregistré évite WebGPU au prochain démarrage)
+        const saved = Store.get(KEY_GPU, null);
+        if (saved && saved.failed === BabylonLoader.VERSION && GRAPHICS_CONFIG.backend !== 'webgpu') {
+          progress('Passage en WebGL 2…');
+          location.reload();
+          await new Promise(() => {});                               // la page se recharge
+        }
         this.replaceCanvas();
+        this.resetModules();
       }
     }
     progress('Initialisation WebGL 2');
@@ -3003,6 +3024,16 @@ const BabylonRenderer = {
       this.engine = eng; this.backend = eng.webGLVersion >= 2 ? 'WebGL 2' : 'WebGL 1';
     }
     this.engine.enableOfflineSupport = false;
+  },
+  // Stockage indisponible : reconstruction en place, en repartant de caches vides
+  resetModules() {
+    MaterialLibrary.spriteCache = {}; MaterialLibrary.textures = [];
+    KnightSword.tpl = null; KnightSword._poses = null;
+    PieceManager.pieces = new Map(); PieceManager.all = new Set(); PieceManager.templates = {};
+    EffectsManager.shardSets = {}; EffectsManager.pools = {}; EffectsManager.ribbons = []; EffectsManager.trails = []; EffectsManager.mats = {};
+    Object.assign(HighlightManager, { markers: [], arrows: [], pool: [], hl: null, brightMats: {}, checkMesh: null, selPiece: null });
+    LightingManager.sg = null;
+    this.pipeline = null; this.ssao = null; this.glow = null; this.probe = null; this._fontHook = false;
   },
   replaceCanvas() {
     const old = this.canvas, c = old.cloneNode(false);

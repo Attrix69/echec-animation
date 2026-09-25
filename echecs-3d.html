@@ -3092,7 +3092,7 @@ const BabylonRenderer = {
     try { this.instr = new BABYLON.SceneInstrumentation(scene); this.instr.captureDrawCalls = true; } catch (e) { /* ignore */ }
     try { this.engInstr = new BABYLON.EngineInstrumentation(engine); this.engInstr.captureGPUFrameTime = true; } catch (e) { /* ignore */ }
     progress('Compilation des shaders');
-    await withTimeout(scene.whenReadyAsync(), 20000, 'compilation des shaders');
+    await withTimeout(scene.whenReadyAsync(), engine.isWebGPU ? 15000 : 30000, 'compilation des shaders');
     mark('ready');
     scene.render();                                             // premier rendu : révèle une éventuelle erreur du backend
     this.bindResize();

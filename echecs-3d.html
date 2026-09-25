@@ -3009,9 +3009,10 @@ const BabylonRenderer = {
     await this.createEngine('webgl');
     await this.buildScene(progress);
   },
+  // Détection sans adaptateur jetable (un adaptateur éphémère peut invalider le périphérique sur certains pilotes) :
+  // initAsync() échoue proprement s'il n'y a pas d'adaptateur, et le repli prend le relais.
   async webgpuAvailable() {
-    try { return !!(navigator.gpu && BABYLON.WebGPUEngine && await withTimeout(BABYLON.WebGPUEngine.IsSupportedAsync, 3000, 'détection WebGPU')); }
-    catch (e) { return false; }
+    return !!(navigator.gpu && typeof navigator.gpu.requestAdapter === 'function' && BABYLON.WebGPUEngine && window.isSecureContext);
   },
   async createEngine(kind) {
     if (kind === 'webgpu') {

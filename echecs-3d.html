@@ -3041,7 +3041,14 @@ const BabylonRenderer = {
     try {
       const probe = this.probe = new BABYLON.ReflectionProbe('board-probe', 128, scene, true, true);
       probe.position = V3(0, 1.1, 0);
-      probe.renderList.push(BoardBuilder.tiles, BoardBuilder.frameTop, BoardBuilder.frameSide, BoardBuilder.bedMesh);
+      // Dôme du studio (mêmes boîtes à lumière que l'IBL), visible UNIQUEMENT par la sonde
+      const dome = this.probeDome = BABYLON.MeshBuilder.CreateSphere('probe-dome', { diameter: 36, segments: 32, sideOrientation: BABYLON.Mesh.BACKSIDE }, scene);
+      dome.position.copyFrom(probe.position);
+      dome.layerMask = 0x10000000; dome.isPickable = false;
+      const dm = new BABYLON.StandardMaterial('probe-dome', scene);
+      dm.disableLighting = true; dm.diffuseColor = BABYLON.Color3.White(); dm.emissiveColor = BABYLON.Color3.Black(); dm.backFaceCulling = false;
+      dome.material = dm;
+      probe.renderList.push(BoardBuilder.tiles, BoardBuilder.frameTop, BoardBuilder.frameSide, BoardBuilder.bedMesh, dome);
       probe.refreshRate = BABYLON.RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       for (const m of [MaterialLibrary.steel, MaterialLibrary.brass, MaterialLibrary.accent]) m.reflectionTexture = probe.cubeTexture;
     } catch (e) { console.warn('[Rendu] sonde de réflexion indisponible', e); this.probe = null; }
@@ -3106,7 +3113,16 @@ const BabylonRenderer = {
       else this.glow.removeIncludedOnlyMesh(BoardBuilder.frameTop);
     }
     if (this.pipeline) this.applyGrading();
-    if (this.probe) this.probe.cubeTexture.resetRefreshCounter();
+    if (this.probe) {
+      const P = this.probeDome.getVerticesData(BABYLON.VertexBuffer.PositionKind), cols = new Float32Array(P.length / 3 * 4);
+      for (let i = 0, j = 0; i < P.length; i += 3, j += 4) {
+        const l = Math.hypot(P[i], P[i + 1], P[i + 2]) || 1;
+        const c = Environment.radiance(th.light.env, P[i] / l, P[i + 1] / l, P[i + 2] / l);
+        cols[j] = c[0] * th.light.envI; cols[j + 1] = c[1] * th.light.envI; cols[j + 2] = c[2] * th.light.envI; cols[j + 3] = 1;
+      }
+      this.probeDome.setVerticesData(BABYLON.VertexBuffer.ColorKind, cols, false, 4);
+      this.probe.cubeTexture.resetRefreshCounter();
+    }
     // La police des coordonnées peut arriver après le premier dessin : on regrave le cadre
     if (initial && document.fonts && !this._fontHook) {
       this._fontHook = true;
@@ -4094,11 +4110,11 @@ const EffectsManager = {
     LightingManager.flash(pos, hex, 5, ms * 1.4);
   },
   // Arc lumineux de taille (plan orienté selon le geste)
-  slashArc(center, yaw, roll, hex, size = 1.1, ms = 260) {
+  slashArc(center, yaw, roll, hex, size = 1.1, ms = 260, flat = false) {
     if (Tweens.skipping) return;
     const m = this.quad('slash', this.additive('crescent', this.tex.crescent, hex));
     m.position.copyFrom(center);
-    m.rotation.set(0, yaw, roll);
+    m.rotation.set(flat ? Math.PI / 2 - .22 : 0, yaw, flat ? 0 : roll);     // à plat : l'arc se lit vu du dessus
     if (BabylonRenderer.glow) BabylonRenderer.glow.addIncludedOnlyMesh(m);
     this.keepAlive(ms / Tweens.speed + 50);
     Tweens.add(ms, k => {
@@ -4611,7 +4627,7 @@ const CombatAnimationController = {
       Haptics.capture();
       BabylonRenderer.dofFocus(ip, .85);
       setTimeout(() => BabylonRenderer.dofFocus(null), 900 / Tweens.speed);
-      if (spec.flash !== false) EffectsManager.flash(ip, spec.flashHex || BabylonRenderer.theme.spark, .9, 150, .8);
+      if (spec.flash !== false) EffectsManager.flash(ip, spec.flashHex || BabylonRenderer.theme.spark, .62, 140, .55);
       if (spec.sparks) EffectsManager.sparks(ip, dir, spec.sparks);
     }
     GameFeelManager.impact(victim.root.position.x, victim.root.position.z, { strength: .5, shake: 0, haptic: null, dust: false, exclude: victim });
@@ -4632,10 +4648,11 @@ class Sword {
     const scene = knight.root.getScene(), T = KnightSword.template();
     this.pivot = new BABYLON.TransformNode('sword-arm', scene);          // épaule droite du cavalier
     this.pivot.parent = knight.orient;
-    this.pivot.position.set(.11, .43, .02);
+    this.pivot.position.set(.12, .46, .03);
     this.pivot.rotationQuaternion = BABYLON.Quaternion.Identity();
     this.grow = new BABYLON.TransformNode('sword-grow', scene);
     this.grow.parent = this.pivot;
+    this.size = 1.22;                                                  // lisible vu du dessus
     this.meshes = ['blade', 'hilt', 'grip'].map(k => {
       const m = T[k].clone('sword-' + k, this.grow, true);
       m.setEnabled(true); m.isPickable = false;
@@ -4664,14 +4681,24 @@ const KnightSword = {
     for (const k in this.tpl) this.tpl[k].setEnabled(false);
     return this.tpl;
   },
-  Q(x, y, z) { return BABYLON.Quaternion.FromEulerAngles(x, y, z); },
+  // Orientation de la lame (axe +y du modèle) vers une direction du repère local du cavalier
+  dirQ(x, y, z, out) {
+    const d = V3(x, y, z).normalize();
+    return BABYLON.Quaternion.FromUnitVectorsToRef(BABYLON.Vector3.Up(), d, out || new BABYLON.Quaternion());
+  },
+  // Taille horizontale : l'azimut balaie de l'arrière droit à l'avant gauche en passant devant le museau
+  // (arc large, lisible vu du dessus), l'élévation descend légèrement
+  slashQ(t, out) {
+    const phi = lerp(2.35, -1.05, t), el = lerp(.38, .02, t);
+    return this.dirQ(Math.cos(el) * Math.sin(phi), Math.sin(el), Math.cos(el) * Math.cos(phi), out);
+  },
   // Poses du bras (repère local du cavalier : +z museau, +x flanc droit)
   get poses() {
     return this._poses || (this._poses = {
-      sheath: this.Q(-2.45, 0, -.15),       // lame vers le bas et l'arrière, le long du flanc
-      guard: this.Q(.3, 0, -.28),           // tenue droite, légèrement ouverte
-      windup: this.Q(-1.25, .25, -.55),     // bras armé au-dessus et en arrière
-      strike: this.Q(1.95, -.2, .75),       // fin de la taille, en diagonale devant le poitrail
+      sheath: this.dirQ(.3, -.8, -.52),     // lame vers le bas et l'arrière, le long du flanc
+      guard: this.dirQ(.28, .85, .45),      // tenue haute, pointe vers l'avant
+      windup: this.slashQ(0),               // bras armé en arrière, ouvert
+      strike: this.slashQ(1),               // fin de la taille, devant le poitrail à gauche
     });
   },
   async attack(K, V, a, b) {
@@ -4689,7 +4716,7 @@ const KnightSword = {
     let ribbon = null, hitDone = false;
     const hex = BabylonRenderer.theme.spark;
     sword.show(true); sword.setVisibility(1);
-    sword.grow.scaling.set(1, .05, 1);
+    sword.grow.scaling.set(sword.size, sword.size * .05, sword.size);
     sword.pose(P.sheath);
     const victimDone = { p: null };
     await Tweens.timeline(D, k => {
@@ -4733,7 +4760,7 @@ const KnightSword = {
       } else if (t < slashStart) {
         sword.pose(P.windup);
       } else if (t < slashEnd) {
-        BABYLON.Quaternion.SlerpToRef(P.windup, P.strike, Ease.inOutQuad((t - slashStart) / S.slash), q); sword.pose(q);
+        this.slashQ(Ease.inOutQuad((t - slashStart) / S.slash), q); sword.pose(q);
       } else if (t < t5) {
         BABYLON.Quaternion.SlerpToRef(P.strike, P.guard, Ease.inOutSine(clamp((t - slashEnd) / (t5 - slashEnd), 0, 1)), q); sword.pose(q);
       } else {
@@ -4741,7 +4768,7 @@ const KnightSword = {
         BABYLON.Quaternion.SlerpToRef(P.guard, P.sheath, Ease.inOutCubic(u), q); sword.pose(q);
         len = 1 - Ease.inCubic(clamp((u - .35) / .65, 0, 1)) * .95;   // rentre au fourreau
       }
-      sword.grow.scaling.set(1, Math.max(.05, len), 1);
+      sword.grow.scaling.set(sword.size, sword.size * Math.max(.05, len), sword.size);
       // Traînée de la lame pendant la taille
       if (ribbon && !ribbon.disposed && t <= slashEnd + 40) ribbon.push(sword.world(V3(0, 0, 0)), sword.world(sword.baseLocal.scale(3.5)), sword.world(sword.tipLocal));
     }, [
@@ -4755,7 +4782,7 @@ const KnightSword = {
         hitDone = true;
         const ip = V.worldCenter(.55);
         const yaw = Math.atan2(dir.x, dir.z);
-        EffectsManager.slashArc(ip.add(dir.scale(-.1)), yaw + Math.PI / 2, .6, hex, 1.25, 280);
+        EffectsManager.slashArc(ip.add(dir.scale(-.2)).add(V3(0, .08, 0)), yaw, 0, hex, 1.4, 300, true);
         victimDone.p = CombatAnimationController.impact({ attacker: K, victim: V, weapon: sword, impactPoint: ip, impactDirection: dir, damageEffect: 'projection', cameraReaction: 'heavy', audio: { hit: 'swordHit' }, sparks: 1.3, flashHex: hex });
       } },
       { at: (slashEnd + 40) / D, run: () => { if (ribbon) ribbon.stop(); } },
@@ -4763,7 +4790,7 @@ const KnightSword = {
       { at: (t5 + (t6 - t5) * .35) / D, run: () => { Sound.play('sheath'); EffectsManager.glint(sword.world(V3(0, .02, 0)), BabylonRenderer.theme.glow); } },
     ]);
     if (ribbon) ribbon.stop();
-    sword.show(false); sword.grow.scaling.set(1, 1, 1);
+    sword.show(false); sword.grow.scaling.set(sword.size, sword.size, sword.size);
     if (K.morph) K.morph.rear = 0;
     if (!hitDone) { hitDone = true; await CaptureAnimationController.projection(V, dir); }
     else if (victimDone.p) await victimDone.p;

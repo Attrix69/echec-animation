@@ -4107,7 +4107,7 @@ const EffectsManager = {
       m.scaling.set(s, s, s);
       m.visibility = opacity * (k < .15 ? k / .15 : Math.pow(1 - (k - .15) / .85, 2));
     }).then(() => { if (BabylonRenderer.glow) BabylonRenderer.glow.removeIncludedOnlyMesh(m); m.dispose(); });
-    LightingManager.flash(pos, hex, 5, ms * 1.4);
+    LightingManager.flash(pos, hex, 2.6, ms * 1.4);
   },
   // Arc lumineux de taille (plan orienté selon le geste)
   slashArc(center, yaw, roll, hex, size = 1.1, ms = 260, flat = false) {
@@ -4115,13 +4115,12 @@ const EffectsManager = {
     const m = this.quad('slash', this.additive('crescent', this.tex.crescent, hex));
     m.position.copyFrom(center);
     m.rotation.set(flat ? Math.PI / 2 - .22 : 0, yaw, flat ? 0 : roll);     // à plat : l'arc se lit vu du dessus
-    if (BabylonRenderer.glow) BabylonRenderer.glow.addIncludedOnlyMesh(m);
     this.keepAlive(ms / Tweens.speed + 50);
-    Tweens.add(ms, k => {
+    Tweens.add(ms, k => {                                                     // arc net (hors couche de lueur)
       const s = size * (.8 + .35 * Ease.outCubic(k));
       m.scaling.set(s, s, s);
-      m.visibility = k < .12 ? k / .12 : Math.pow(1 - (k - .12) / .88, 1.6);
-    }).then(() => { if (BabylonRenderer.glow) BabylonRenderer.glow.removeIncludedOnlyMesh(m); m.dispose(); });
+      m.visibility = .7 * (k < .12 ? k / .12 : Math.pow(1 - (k - .12) / .88, 1.6));
+    }).then(() => m.dispose());
   },
   ribbon(hex, opts) {
     const r = new RibbonTrail(this.scene, C3(hex), opts);

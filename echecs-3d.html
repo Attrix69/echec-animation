@@ -252,6 +252,8 @@ button, input { font: inherit; color: inherit; }
 /* Options */
 .sheet--options { text-align: left; width: min(100%, 440px); }
 .sheet--options h2 { margin-bottom: 14px; }
+/* bouton « Fermer » toujours accessible, même quand la feuille défile (téléphone) */
+.sheet--options > .row:last-child { position: sticky; bottom: -20px; margin: 14px -24px -20px; padding: 14px 24px 18px; background: linear-gradient(to bottom, rgba(18, 13, 9, 0), rgb(18, 13, 9) 38%); }
 .opt { margin-top: 16px; }
 .opt__label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ivory-dim); margin-bottom: 8px; letter-spacing: .01em; }
 .seg { display: flex; padding: 3px; gap: 3px; background: rgba(0,0,0,.28); border: 1px solid var(--ivory-faint); border-radius: 10px; }
@@ -469,33 +471,46 @@ button, input { font: inherit; color: inherit; }
 <script>
 /* =====================================================================
    CHARGEMENT DE BABYLON.JS
-   Version épinglée, plusieurs CDN tentés dans l'ordre, puis une copie
-   locale facultative (assets/vendor/babylon.js) pour un usage hors ligne.
+   Version épinglée, plusieurs CDN tentés dans l'ordre, puis la copie
+   locale fournie (assets/vendor/babylon.js) pour un usage hors ligne ;
+   page ouverte depuis le disque (file://) : la copie locale d'abord.
    Le téléchargement démarre dès l'analyse de la page.
    ===================================================================== */
 window.BabylonLoader = (() => {
   'use strict';
   const VERSION = '9.28.0';
-  const SOURCES = [
+  const LOCAL = 'assets/vendor/babylon.js';
+  const CDNS = [
     `https://cdn.jsdelivr.net/npm/babylonjs@${VERSION}/babylon.js`,
     `https://unpkg.com/babylonjs@${VERSION}/babylon.js`,
     `https://cdn.babylonjs.com/v${VERSION}/babylon.js`,
-    'assets/vendor/babylon.js',
   ];
+  // Page ouverte depuis le disque : la copie locale d'abord (aucun réseau nécessaire)
+  const SOURCES = location.protocol === 'file:' ? [LOCAL, ...CDNS] : [...CDNS, LOCAL];
+  const remote = src => /^https?:/.test(src);
   const inject = src => new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src; s.async = true; s.crossOrigin = 'anonymous';
-    s.onload = () => (window.BABYLON ? resolve(src) : reject(new Error('BABYLON absent')));
-    s.onerror = () => { s.remove(); reject(new Error('échec ' + src)); };
+    s.src = src; s.async = true;
+    if (remote(src)) s.crossOrigin = 'anonymous';           // jamais en file:// (origine opaque → CORS refusé)
+    const timer = setTimeout(() => reject(new Error('délai dépassé ' + src)), remote(src) ? 45000 : 60000);
+    s.onload = () => { clearTimeout(timer); window.BABYLON ? resolve(src) : reject(new Error('BABYLON absent')); };
+    s.onerror = () => { clearTimeout(timer); s.remove(); reject(new Error('échec ' + src)); };
     document.head.appendChild(s);
   });
+  // Une fois chargé, BABYLON est figé : une copie arrivée en retard (source lente abandonnée) ne peut pas le remplacer
+  const freeze = src => {
+    try { Object.defineProperty(window, 'BABYLON', { value: window.BABYLON, writable: false, configurable: false }); } catch (e) { /* déjà figé */ }
+    return src;
+  };
   let pending = null;
   const load = () => {
-    if (window.BABYLON) return Promise.resolve('déjà chargé');
+    if (window.BABYLON) return Promise.resolve(freeze('déjà chargé'));
     return pending || (pending = (async () => {
       for (const src of SOURCES) {
-        try { return await inject(src); } catch (e) { console.warn('[Babylon] source indisponible :', src); }
+        if (window.BABYLON) return freeze('chargé en retard');
+        try { return freeze(await inject(src)); } catch (e) { console.warn('[Babylon] source indisponible :', src, e.message); }
       }
+      if (window.BABYLON) return freeze('chargé en retard');
       throw new Error('Babylon.js n’a pu être chargé depuis aucune source');
     })());
   };
@@ -1208,7 +1223,7 @@ const THEMES = {
       env: { zenith: [.13, .11, .09], horizon: [.06, .045, .035], ground: [.012, .01, .008], key: [3.4, 2.9, 2.3], rim: [2.2, 2.6, 3.4], top: [.7, .64, .56] },
       envI: .75, exposure: 1.0, contrast: 1.14,
     },
-    hi: { sel: '#f3cf7a', last: '#d9b560', dot: '#f6d892', dotOp: .5, cap: '#ff6a3d', check: '#ff3b2a' },
+    hi: { sel: '#f3cf7a', last: '#d9b560', dot: '#f6d892', dotOp: .5, shade: '#2a1606', cap: '#ff6a3d', check: '#ff3b2a' },
     glow: '#ffc978', dust: '#8b7358', spark: '#ffd28a',
   },
   marbre: {
@@ -1232,7 +1247,7 @@ const THEMES = {
       env: { zenith: [.12, .125, .13], horizon: [.05, .052, .055], ground: [.01, .011, .011], key: [3.2, 3.05, 2.8], rim: [2.3, 2.6, 3.3], top: [.66, .67, .68] },
       envI: .8, exposure: .9, contrast: 1.12,
     },
-    hi: { sel: '#e8d39a', last: '#c9b27a', dot: '#e9cf8e', dotOp: .5, cap: '#ff6a3d', check: '#ff3b2a' },
+    hi: { sel: '#e8d39a', last: '#c9b27a', dot: '#e9cf8e', dotOp: .5, shade: '#1d1a16', cap: '#ff6a3d', check: '#ff3b2a' },
     glow: '#fff0c8', dust: '#9a9a92', spark: '#fff3d6',
   },
   nuit: {
@@ -1256,7 +1271,7 @@ const THEMES = {
       env: { zenith: [.05, .07, .1], horizon: [.02, .03, .045], ground: [.004, .006, .009], key: [2.2, 2.6, 3.2], rim: [1.2, 3.4, 5], top: [.45, .52, .66] },
       envI: .75, exposure: 1.06, contrast: 1.15,
     },
-    hi: { sel: '#6fdcff', last: '#3a9cc8', dot: '#9fe8ff', dotOp: .34, cap: '#ff5f8a', check: '#ff3b5c' },
+    hi: { sel: '#6fdcff', last: '#3a9cc8', dot: '#9fe8ff', dotOp: .34, shade: '#000000', cap: '#ff5f8a', check: '#ff3b5c' },
     glow: '#6fdcff', dust: '#3a4a5a', spark: '#9fe8ff',
   },
 };
@@ -2709,7 +2724,7 @@ const CameraController = {
     cam.inputs.clear();
     this.base = { alpha: -Math.PI / 2, beta: cam.beta };
     this.user = { a: 0, b: 0, zoom: 1, last: 0, active: false };
-    this.fx = { trauma: 0, t: 0, focus: V3(), focusAmt: 0, focusTarget: 0, focusZoom: 1, focusSpeed: 6 };
+    this.fx = { trauma: 0, t: 0, focus: V3(), focusAmt: 0, focusTarget: 0, focusZoom: 1, focusSpeed: 6, zoomAmt: 1 };
     this.fitCache = null;
     this.rect = null;
     return cam;
@@ -2823,10 +2838,10 @@ const CameraController = {
     // Focus cinématique (temporaire)
     const df = fx.focusTarget - fx.focusAmt;
     if (Math.abs(df) > 1e-4) { fx.focusAmt += df * (1 - Math.exp(-s * fx.focusSpeed)); moving = true; } else fx.focusAmt = fx.focusTarget;
-    if (fx.focusAmt > 1e-4) {
-      target.addInPlace(fx.focus.subtract(target).scale(fx.focusAmt));
-      radius *= lerp(1, fx.focusZoom, Math.min(1, fx.focusAmt / Math.max(.01, fx.focusTarget || fx.focusAmt)));
-    }
+    const zt = fx.focusTarget > 0 ? fx.focusZoom : 1, dz = zt - fx.zoomAmt;
+    if (Math.abs(dz) > 1e-4) { fx.zoomAmt += dz * (1 - Math.exp(-s * fx.focusSpeed)); moving = true; } else fx.zoomAmt = zt;
+    if (fx.focusAmt > 1e-4) target.addInPlace(fx.focus.subtract(target).scale(fx.focusAmt));
+    radius *= fx.zoomAmt;
     // Secousse (traumatisme², bruit lissé)
     fx.t += s;
     let da = 0, db = 0;
@@ -3394,6 +3409,7 @@ class Piece {
   get position() { return this.root.position; }
   // Pose neutre (fin d'animation)
   resetPose() {
+    this.fallen = false;
     this.motion.position.set(0, 0, 0);
     this.motion.rotationQuaternion.set(0, 0, 0, 1);
     this.motion.scaling.set(1, 1, 1);
@@ -3590,7 +3606,7 @@ const IdleAnimationController = {
     if (!on || p.leaving) {
       I.position.y = 0; I.rotation.set(0, 0, 0); I.scaling.set(1, 1, 1);
       if (p.morph) this.morph(p, p.morph.rear, 0);
-      if (p.check && on !== false) this.checkShake(p, t);
+      if (p.check && !p.fallen && on !== false) this.checkShake(p, t);
       return;
     }
     const TAU = Math.PI * 2;
@@ -3602,7 +3618,7 @@ const IdleAnimationController = {
     I.rotation.z = P.sway * (Math.sin(t * TAU * P.swayHz * 1.13 + P.ph3) * .7 + noise1(t * .31 + P.seed + 40) * .3);
     I.rotation.y = P.yaw * Math.sin(t * TAU * P.yawHz + P.ph4);
     if (p.morph) this.morph(p, p.morph.rear, P.nod * (.5 + .5 * Math.sin(t * TAU * P.breathHz * .5 + P.ph3)));
-    if (p.check) this.checkShake(p, t);
+    if (p.check && !p.fallen) this.checkShake(p, t);
   },
   // Roi en échec : micro-vibration et pulsation
   checkShake(p, t) {
@@ -3685,8 +3701,9 @@ const HighlightManager = {
     if (!this.scene) return;
     this.clearMarkers();
     const S = this.state, now = performance.now();
-    const add = (sq, tex, colorKey, { alpha = 1, scale = 1, kind = 'static', additive = false, delay = 0, y = .004 } = {}) => {
+    const add = (sq, tex, colorKey, { alpha = 1, scale = 1, kind = 'static', additive = false, delay = 0, y = .004, order = 1 } = {}) => {
       const m = this.marker();
+      m.alphaIndex = order;                                     // marquages au sol : l'ombre des pastilles d'abord
       m.material = this.mat(tex, colorKey, additive);
       this.place(m, sq, y);
       m.scaling.set(scale, 1, scale);
@@ -3703,7 +3720,10 @@ const HighlightManager = {
       if (t.capture) {
         add(t.sq, 'brackets', 'cap', { alpha: .95, scale: .96, kind: 'cap', delay, additive: true });
         add(t.sq, 'ring', 'cap', { alpha: .5, scale: .9, kind: 'capRing', delay, additive: true });
-      } else add(t.sq, 'dot', 'dot', { alpha: this.th ? this.th.hi.dotOp + .2 : .5, scale: .3, kind: 'dot', delay });
+      } else {                                                   // pastille lisible sur cases claires comme foncées : ombre douce + point doré
+        add(t.sq, 'dot', 'shade', { alpha: .34, scale: .44, kind: 'dot', delay, y: .003, order: 0 });
+        add(t.sq, 'dot', 'dot', { alpha: this.th ? this.th.hi.dotOp + .32 : .8, scale: .3, kind: 'dot', delay });
+      }
     }
     if (S.hover >= 0 && S.targets.some(t => t.sq === S.hover)) add(S.hover, 'square', 'sel', { alpha: .45, kind: 'hover' });
     this.animating = this.markers.some(m => m.metadata.kind !== 'static') || S.check >= 0;
@@ -3740,7 +3760,7 @@ const HighlightManager = {
   // Roi en échec : halo rouge au sol, lumière rouge très subtile, lueur, micro-vibration
   setCheck(sq) {
     const th = this.th || BabylonRenderer.theme;
-    for (const p of PieceManager.all) if (p.check && (sq < 0 || p.sq !== sq)) { p.check = false; this.glowPiece(p, false, 'check'); }
+    for (const p of PieceManager.all) if ((p.check || (p.glowWhy && p.glowWhy.check)) && (sq < 0 || p.sq !== sq)) { p.check = false; this.glowPiece(p, false, 'check'); }
     if (sq < 0) {
       if (this.checkMesh) this.checkMesh.setEnabled(false);
       LightingManager.setAccent({ intensity: 0, pulse: 0 });
@@ -4875,7 +4895,7 @@ const CinematicDirector = {
     const dir = king.root.position.z < 0 ? { x: .35, z: -1 } : { x: -.35, z: 1 };
     const R = PieceGeo.R(king.type), x0 = king.root.position.x, z0 = king.root.position.z;
     const th = BabylonRenderer.theme;
-    king.check = false;
+    king.fallen = true;                                              // plus de vibration d'échec pendant / après la chute
     CameraController.focusOn(king.worldCenter(.4), { amount: .55, zoom: C.focusZoom, speed: 2.4 });
     BabylonRenderer.dofFocus(king.worldCenter(.4), .9);
     LightingManager.setAccent({ pos: king.worldCenter(.9), color: th.hi.check, intensity: 2.2, pulse: .25 });
@@ -4906,7 +4926,7 @@ const CinematicDirector = {
     Tweens.timeScale = 1;
     LightingManager.setAccent({ intensity: 0, pulse: 0 });
     await Tweens.delay(650);
-    CameraController.release(1.6);                                   // retour au cadrage plein écran
+    CameraController.release(2.4);                                   // retour au cadrage plein écran
     BabylonRenderer.dofFocus(null);
   },
 };
@@ -5037,7 +5057,7 @@ const View = {
 const Fx = {
   playMove(m, pos, opts) { return MoveDirector.playMove(m, pos, opts); },
   topple(king) { return CinematicDirector.mate(king); },
-  clearAll() { EffectsManager.clearAll(); HighlightManager.setCheck(-1); },
+  clearAll() { EffectsManager.clearAll(); HighlightManager.setCheck(-1); CameraController.release(4); },
 };
 
 /* =====================================================================

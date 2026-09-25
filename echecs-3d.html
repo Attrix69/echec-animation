@@ -1208,7 +1208,7 @@ const THEMES = {
       env: { zenith: [.13, .11, .09], horizon: [.06, .045, .035], ground: [.012, .01, .008], key: [3.4, 2.9, 2.3], rim: [2.2, 2.6, 3.4], top: [.7, .64, .56] },
       envI: .75, exposure: 1.0, contrast: 1.14,
     },
-    hi: { sel: '#f3cf7a', last: '#d9b560', dot: '#1a0f06', dotOp: .42, cap: '#ff6a3d', check: '#ff3b2a' },
+    hi: { sel: '#f3cf7a', last: '#d9b560', dot: '#f6d892', dotOp: .5, cap: '#ff6a3d', check: '#ff3b2a' },
     glow: '#ffc978', dust: '#8b7358', spark: '#ffd28a',
   },
   marbre: {
@@ -1217,22 +1217,22 @@ const THEMES = {
     sceneBg: '#0b0c0c',
     board: {
       kind: 'marble',
-      light: { base: '#dcd6ca', vein: '92,88,80', cloud: '255,255,250' },
+      light: { base: '#cfc8ba', vein: '92,88,80', cloud: '255,255,250' },
       dark: { base: '#34403b', vein: '190,198,188', cloud: '20,28,24' },
       inlay: '#0f1211', line: '#bba77a', rough: .16, roughVar: .08, clearcoat: .9, ccRough: .06, relief: .25,
     },
     frame: { kind: 'marble', marble: { base: '#1f2322', vein: '140,142,132', cloud: '60,64,60' }, text: '#d2bd8a', line: '#bba77a', rough: .2, clearcoat: .95, ccRough: .05 },
     pieces: {
-      w: { kind: 'marble', base: '#ece8df', vein: '120,112,100', cloud: '255,255,252', rough: .24, cc: .6, ccRough: .08, ior: 1.57 },
+      w: { kind: 'marble', base: '#e0dacd', vein: '120,112,100', cloud: '255,255,252', rough: .24, cc: .6, ccRough: .08, ior: 1.57 },
       b: { kind: 'marble', base: '#161818', vein: '120,126,122', cloud: '40,44,42', rough: .2, cc: .9, ccRough: .05, ior: 1.57 },
       accent: { color: '#d9d9dc', rough: .2 },               // argent
     },
     light: {
       key: '#fff4e6', keyI: 4.0, fill: '#e9f0ff', fillI: .32, rim: '#c8d6ff', rimI: 1.3, top: '#f2f4f0', topGround: '#101312', topI: .22,
       env: { zenith: [.12, .125, .13], horizon: [.05, .052, .055], ground: [.01, .011, .011], key: [3.2, 3.05, 2.8], rim: [2.3, 2.6, 3.3], top: [.66, .67, .68] },
-      envI: .8, exposure: .98, contrast: 1.12,
+      envI: .8, exposure: .9, contrast: 1.12,
     },
-    hi: { sel: '#e8d39a', last: '#c9b27a', dot: '#0d1210', dotOp: .38, cap: '#ff6a3d', check: '#ff3b2a' },
+    hi: { sel: '#e8d39a', last: '#c9b27a', dot: '#e9cf8e', dotOp: .5, cap: '#ff6a3d', check: '#ff3b2a' },
     glow: '#fff0c8', dust: '#9a9a92', spark: '#fff3d6',
   },
   nuit: {
@@ -1537,8 +1537,8 @@ const Tex = {
     if (F.neon) {
       emissive = this.canvas(size); ectx = emissive.getContext('2d');
       ectx.fillStyle = '#000'; ectx.fillRect(0, 0, size, size);
-      ectx.shadowColor = F.neon; ectx.shadowBlur = u * .08;
-      inlay(ectx, F.neon, u * .016, .85);
+      ectx.shadowColor = F.neon; ectx.shadowBlur = u * .05;
+      inlay(ectx, F.neon, u * .012, .7);
     }
     for (let k = 0; k < 8; k++) {
       const Lt = 'abcdefgh'[k], N = String(k + 1);
@@ -1547,7 +1547,7 @@ const Tex = {
         draw(ctx, t, x, y, r, (c2, s) => { c2.fillStyle = 'rgba(0,0,0,.55)'; c2.fillText(s, -u * .012, -u * .016); c2.fillStyle = F.text; c2.fillText(s, 0, 0); });
         draw(hctx, t, x, y, r, (c2, s) => { c2.shadowColor = '#3a3a3a'; c2.shadowBlur = u * .025; c2.fillStyle = '#3a3a3a'; c2.fillText(s, 0, 0); });
         draw(mctx, t, x, y, r, (c2, s) => { c2.fillStyle = '#fff'; c2.fillText(s, 0, 0); });
-        if (ectx) draw(ectx, t, x, y, r, (c2, s) => { c2.shadowColor = F.neon; c2.shadowBlur = u * .1; c2.fillStyle = F.neon; c2.globalAlpha = .6; c2.fillText(s, 0, 0); });
+        if (ectx) draw(ectx, t, x, y, r, (c2, s) => { c2.shadowColor = F.neon; c2.shadowBlur = u * .06; c2.fillStyle = F.neon; c2.globalAlpha = .45; c2.fillText(s, 0, 0); });
       }
     }
     return { albedo, height, metal, emissive };
@@ -2454,7 +2454,7 @@ const MaterialLibrary = {
     F.useRoughnessFromMetallicTextureGreen = true; F.useMetallnessFromMetallicTextureBlue = true;
     F.metallic = 1; F.roughness = 1;
     F.clearCoat.intensity = th.frame.clearcoat; F.clearCoat.roughness = th.frame.ccRough;
-    if (fr.emissive) { F.emissiveTexture = this.canvasTexture('frame-neon', fr.emissive); F.emissiveColor = BABYLON.Color3.White(); F.emissiveIntensity = 1.4; }
+    if (fr.emissive) { F.emissiveTexture = this.canvasTexture('frame-neon', fr.emissive); F.emissiveColor = BABYLON.Color3.White(); F.emissiveIntensity = .55; }
     else { F.emissiveTexture = null; F.emissiveColor = BABYLON.Color3.Black(); }
     const S = this.frameSide;
     S.albedoTexture = this.canvasTexture('frame-edge', Tex.edge(th), { wrap: true });
@@ -3141,6 +3141,7 @@ const BabylonRenderer = {
     if (env) { this.scene.environmentTexture = env; this.scene.environmentIntensity = th.light.envI; }
     if (old && old !== env) old.dispose();
     if (this.glow) {
+      this.glow.intensity = th.board.neon ? .45 : .85;
       if (MaterialLibrary.frameTop.emissiveTexture) this.glow.addIncludedOnlyMesh(BoardBuilder.frameTop);
       else this.glow.removeIncludedOnlyMesh(BoardBuilder.frameTop);
     }
@@ -3779,7 +3780,7 @@ const HighlightManager = {
     const want = p.glowWhy.check ? th.hi.check : p.glowWhy.sel ? th.hi.sel : null;
     for (const m of p.meshes) {
       try { hl.removeMesh(m); } catch (e) { /* ignore */ }
-      if (want && p.alive) hl.addMesh(m, C3(want).scale(p.glowWhy.check ? .9 : .55));
+      if (want && p.alive) hl.addMesh(m, C3(want).scale(p.glowWhy.check ? .8 : .36));
     }
   },
   setSelectedGlow(sq) {

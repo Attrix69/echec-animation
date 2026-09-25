@@ -4020,11 +4020,11 @@ const EffectsManager = {
     mesh.isPickable = false; mesh.alwaysSelectAsActiveMesh = true;
     LightingManager.addCaster(mesh);
     sps.computeBoundingBox = false;
-    for (const p of sps.particles) { p.isVisible = false; p.alive = false; }
+    for (const p of sps.particles) { p.isVisible = false; p.on = false; }   // « alive » est réservé par le SPS
     sps.setParticles();
     const set = { sps, mesh, live: 0 };
     sps.updateParticle = p => {
-      if (!p.alive) return p;
+      if (!p.on) { p.isVisible = false; return p; }
       const s = this._dt;
       p.age += s;
       p.velocity.y -= 9.8 * s;
@@ -4042,7 +4042,7 @@ const EffectsManager = {
       if (onBoard) p.offAt = p.age;
       const sc = p.r * fade;
       p.scaling.set(sc, sc, sc);
-      if (fade <= 0 || p.age >= p.life) { p.alive = false; p.isVisible = false; set.live--; }
+      if (fade <= 0 || p.age >= p.life) { p.on = false; p.isVisible = false; set.live--; }
       return p;
     };
     return (this.shardSets[color] = set);
@@ -4053,8 +4053,8 @@ const EffectsManager = {
     let spawned = 0;
     for (const p of set.sps.particles) {
       if (spawned >= n) break;
-      if (p.alive) continue;
-      p.alive = true; p.isVisible = true; spawned++; set.live++;
+      if (p.on) continue;
+      p.on = true; p.isVisible = true; spawned++; set.live++;
       p.r = .03 + Math.random() * .06; p.age = 0; p.offAt = 0; p.life = 1.2 + Math.random() * .6;
       const a = Math.random() * Math.PI * 2, rad = Math.random() * .2;
       p.position.set(pos.x + Math.cos(a) * rad, pos.y + Math.random() * .5, pos.z + Math.sin(a) * rad);
@@ -4177,7 +4177,7 @@ const EffectsManager = {
   // Efface les effets résiduels (retour en arrière, nouvelle position)
   clearAll() {
     for (const k in this.pools) for (const ps of this.pools[k].list) { try { ps.reset(); ps.stop(); } catch (e) { /* ignore */ } }
-    for (const k in this.shardSets) { const s = this.shardSets[k]; for (const p of s.sps.particles) { p.alive = false; p.isVisible = false; } s.live = 0; s.sps.setParticles(); s.mesh.setEnabled(false); }
+    for (const k in this.shardSets) { const s = this.shardSets[k]; for (const p of s.sps.particles) { p.on = false; p.isVisible = false; } s.live = 0; s.sps.setParticles(); s.mesh.setEnabled(false); }
     for (const r of this.ribbons) r.dispose();
     this.ribbons = [];
     for (const r of this.trails) { if (BabylonRenderer.glow) BabylonRenderer.glow.removeIncludedOnlyMesh(r.t); r.t.dispose(); r.m.dispose(); }
@@ -4504,7 +4504,8 @@ const CaptureAnimationController = {
       const a = kf(k, [[0, 0], [.12, -.12, Ease.outQuad], [.62, 1.42, Ease.inQuad], [.78, 1.3, Ease.outQuad], [.9, 1.42, Ease.inQuad], [1, 1.4]]);
       v.lean(dir.x, dir.z, a);
       const tip = Math.max(0, a);
-      setXZ(v, x0 + dir.x * (R * Math.sin(tip) * .8 + .12 * k), z0 + dir.z * (R * Math.sin(tip) * .8 + .12 * k));
+      const push = .4 * Ease.outCubic(Math.min(1, k * 1.4));                // repoussée hors de la case de l'attaquant
+      setXZ(v, x0 + dir.x * (R * Math.sin(tip) * .8 + push), z0 + dir.z * (R * Math.sin(tip) * .8 + push));
       v.motion.position.y = R * .55 * Math.sin(Math.min(tip, 1.4)) * .6;
     }, [{ at: .62, run: () => { Sound.play('thud', { g: .5 }); EffectsManager.dust(v.root.position.x + dir.x * .4, v.root.position.z + dir.z * .4, .7); } }]);
     await Tweens.delay(140);
@@ -4535,7 +4536,9 @@ const CaptureAnimationController = {
     const yaw0 = v.orient.rotation.y, hex = EffectsManager.glowHex();
     for (const m of v.meshes) LightingManager.removeCaster(m);
     let lastFx = 0;
+    const bx = v.root.position.x, bz = v.root.position.z;
     await Tweens.timeline(760, k => {
+      setXZ(v, bx + dir.x * .35 * Ease.outCubic(Math.min(1, k * 2)), bz + dir.z * .35 * Ease.outCubic(Math.min(1, k * 2)));
       v.orient.rotation.y = yaw0 + 9 * Ease.inCubic(k);
       v.motion.position.y = .25 * Ease.inOutSine(k);
       const s = 1 - .75 * Ease.inQuad(k);
@@ -4569,10 +4572,12 @@ const CaptureAnimationController = {
     const hex = EffectsManager.glowHex();
     Sound.play('zap');
     for (const m of v.meshes) LightingManager.removeCaster(m);
-    await Tweens.timeline(460, k => {
-      v.motion.position.y = .18 * Ease.outCubic(k);
-      v.orient.rotation.y += .02;
-      v.lean(dir.x, dir.z, .1 * Math.sin(Math.PI * k));
+    const bx = v.root.position.x, bz = v.root.position.z;
+    await Tweens.timeline(240, k => {                                // soulevée et repoussée par l'onde, elle vibre de lumière
+      v.motion.position.y = .2 * Ease.outCubic(k);
+      setXZ(v, bx + dir.x * .3 * Ease.outCubic(k), bz + dir.z * .3 * Ease.outCubic(k));
+      v.orient.rotation.y += .03;
+      v.lean(dir.x, dir.z, .18 * Math.sin(Math.PI * k));
       const s = 1 + .08 * Math.sin(k * 40) * k;
       v.motion.scaling.set(s, 1 + .05 * k, s);
     });

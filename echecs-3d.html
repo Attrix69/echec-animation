@@ -4342,7 +4342,7 @@ const BishopAnimationProfile = {
     }, [
       { at: A / D, run: () => {
         Sound.play('bishopGlide', { dur: G / Tweens.speed / 1000 });
-        trail = EffectsManager.trail(Pieces.fxAnchor(p, .72), hex, { diameter: .045, length: 30, alpha: .45 });
+        trail = EffectsManager.trail(Pieces.fxAnchor(p, .72), hex, { diameter: .03, length: 26, alpha: .3 });
       } },
       { at: (A + G) / D, run: () => { EffectsManager.stopTrail(trail); Sound.play('tock', { f: 520 }); GameFeelManager.impact(b.x, b.z, { strength: .3, shake: 0, haptic: 'move', dust: false }); } },
     ]);
@@ -4405,7 +4405,7 @@ const QueenAnimationProfile = {
       halo.visibility = .55 * Math.sin(Math.PI * k);
       if (k - last > .06 && k < .8) { last = k; EffectsManager.magic(p.worldCenter(.75), .12, hex, .28); }  // aura très discrète
     }, [
-      { at: 0, run: () => { Sound.play('queenRise'); trail = EffectsManager.trail(Pieces.fxAnchor(p, .86), hex, { diameter: .05, length: 34, alpha: .5 }); } },
+      { at: 0, run: () => { Sound.play('queenRise'); trail = EffectsManager.trail(Pieces.fxAnchor(p, .86), hex, { diameter: .032, length: 30, alpha: .28 }); } },
       { at: .8, run: () => EffectsManager.stopTrail(trail) },
     ]);
     done.then(() => { halo.dispose(); Sound.play('tock', { f: 440 }); GameFeelManager.impact(b.x, b.z, { strength: .35, shake: 0, haptic: 'move', dust: false }); });
